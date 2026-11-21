@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 import { generateJsonLd, generateToolMetadata } from '@/lib/seo';
 import toolConfig from '@/tool/tool.config';
 import { getPublicSiteUrl, templateMetadata } from '@/tool/template-metadata';
-import { notepadTool } from '@/tool/notepad-state';
+import { readabilityAnalyzerTool } from '@/tool/tool-definition';
 import { ToolCanvas } from '@/tool/components/tool-canvas';
 import { ToolSidebar } from '@/tool/components/tool-sidebar';
 import { ToolToolbar } from '@/tool/components/tool-toolbar';
@@ -92,20 +92,25 @@ describe('app and seo', () => {
   it('covers tool definition and helper exports', async () => {
     expect(cn('a', undefined, 'b', false, null, 'c')).toBe('a b c');
     expect(getPublicSiteUrl()).toBe('http://localhost:3000');
-    expect(notepadTool.deserialize({ content: 'x' })).toEqual({
-      success: true,
-      data: { content: 'x', title: '' },
-    });
-    expect(notepadTool.deserialize({ nope: true })).toEqual({
+    expect(readabilityAnalyzerTool.deserialize({ nope: true })).toEqual({
       success: false,
-      error: 'Invalid data format: expected { content: string, title?: string }',
+      error: 'Invalid data format: expected readability analyzer state',
     });
-    expect(notepadTool.serialize({ content: 'x' })).toContain('"content": "x"');
-    expect(notepadTool.deserialize({ content: 'x', title: 'My Note' })).toEqual({
+    expect(
+      readabilityAnalyzerTool.serialize({
+        text: 'x',
+        wpm: 220,
+        longSentenceThreshold: 25,
+        hardSentenceFlesch: 60,
+      })
+    ).toContain('"text":"x"');
+    expect(readabilityAnalyzerTool.deserialize({ text: 'x' })).toEqual({
       success: true,
-      data: { content: 'x', title: 'My Note' },
+      data: { text: 'x', wpm: 220, longSentenceThreshold: 25, hardSentenceFlesch: 60 },
     });
-    const exporters = (notepadTool as { exporters?: Array<{ loader: ExporterLoader }> }).exporters ?? [];
+    const exporters =
+      (readabilityAnalyzerTool as { exporters?: Array<{ loader: ExporterLoader }> }).exporters ??
+      [];
     expect(exporters).toHaveLength(4);
     const first = exporters[0];
     expect(first).toBeDefined();
@@ -116,16 +121,41 @@ describe('app and seo', () => {
   });
 
   it('renders tool components', () => {
+    const analysis = {
+      counts: {
+        words: 2,
+        characters: 11,
+        charactersNoSpaces: 10,
+        sentences: 1,
+        paragraphs: 1,
+        syllables: 2,
+      },
+      paragraphs: [],
+      sentences: [],
+      scores: { fleschReadingEase: 90, fleschKincaidGrade: 1, gunningFog: 1, smog: 1 },
+      distribution: { veryEasy: 1, easy: 0, standard: 0, difficult: 0, veryDifficult: 0 },
+      complexWords: [],
+      readingTimeMinutes: 0.01,
+      readingTimeLabel: '1s',
+      flaggedCount: 0,
+    };
     render(
       <>
-        <ToolToolbar />
-        <ToolSidebar text="Hello world" fontSize={16} onFontSizeChange={() => {}} />
-        <ToolCanvas text="" fontSize={16} />
+        <ToolToolbar analysis={analysis} onCopySummary={() => {}} onExportJson={() => {}} />
+        <ToolSidebar
+          analysis={analysis}
+          settings={{ wpm: 220, longSentenceThreshold: 25, hardSentenceFlesch: 60 }}
+          fontSize={16}
+          onFontSizeChange={() => {}}
+        />
+        <ToolCanvas text="Hello world" analysis={analysis} />
       </>
     );
 
     expect(screen.getByRole('link', { name: 'Open help page' })).toBeInTheDocument();
     expect(screen.getByText('11')).toBeInTheDocument(); // char count for "Hello world"
-    expect(screen.getByRole('application', { name: 'Notepad canvas' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('application', { name: 'Text editor and analysis' })
+    ).toBeInTheDocument();
   });
 });

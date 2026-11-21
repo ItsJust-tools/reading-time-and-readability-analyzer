@@ -63,13 +63,47 @@ vi.mock('@/tool', () => ({
   templateBaseVersion: '1.1.0',
   ToolCanvas: ({ text }: { text: string }) => <div>canvas:{text}</div>,
   ToolToolbar: () => <div>toolbar</div>,
-  ToolSidebar: ({ text }: { text: string }) => <div>sidebar:{text}</div>,
+  ToolSidebar: () => <div>sidebar</div>,
+  downloadJson: () => {},
+  buildSummaryReport: () => 'summary',
+  readabilityAnalyzerTool: {
+    serialize: (state: unknown) => JSON.stringify(state),
+    deserialize: () => ({
+      success: true,
+      data: {
+        text: 'From Shared Url',
+        wpm: 220,
+        longSentenceThreshold: 25,
+        hardSentenceFlesch: 60,
+      },
+    }),
+  },
+}));
+
+vi.mock('@/tool/analyzer', () => ({
+  analyzeText: () => ({
+    counts: {
+      words: 1,
+      characters: 5,
+      charactersNoSpaces: 5,
+      sentences: 1,
+      paragraphs: 1,
+      syllables: 1,
+    },
+    paragraphs: [],
+    sentences: [],
+    scores: { fleschReadingEase: 0, fleschKincaidGrade: 0, gunningFog: 0, smog: 0 },
+    distribution: { veryEasy: 0, easy: 0, standard: 0, difficult: 0, veryDifficult: 0 },
+    complexWords: [],
+    readingTimeMinutes: 0,
+    readingTimeLabel: '0s',
+    flaggedCount: 0,
+  }),
 }));
 
 vi.mock('@/tool/notepad-state', () => ({
   notepadTool: {
     serialize: (state: unknown) => JSON.stringify(state),
-    deserialize: () => ({ success: true, data: { content: 'From Shared Url', title: '' } }),
   },
 }));
 

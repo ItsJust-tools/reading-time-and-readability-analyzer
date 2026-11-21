@@ -17,8 +17,12 @@ import {
   ToolCanvas,
   ToolToolbar,
   ToolSidebar,
+  downloadJson,
+  buildSummaryReport,
+  readabilityAnalyzerTool,
 } from '@/tool';
-import { notepadTool as notepadToolDef, type NotepadState } from '@/tool/notepad-state';
+import { analyzeText } from '@/tool/analyzer';
+import type { ReadabilityState } from '@/tool/types';
 
 const DEFAULT_FONT_SIZE = 16;
 const MIN_FONT_SIZE = 8;
@@ -33,7 +37,7 @@ export default function ToolClient() {
     StatusBar?: ComponentType<{ children?: ReactNode }>;
   };
   const canvasRef = useRef<HTMLDivElement>(null);
-  const tool = useTool<NotepadState>(notepadToolDef, canvasRef);
+  const tool = useTool<ReadabilityState>(readabilityAnalyzerTool, canvasRef);
   const setToolData = tool.state.setData;
   const showToast = tool.toast;
   const [isSharing, setIsSharing] = useState(false);
@@ -43,21 +47,31 @@ export default function ToolClient() {
   );
   const [fontSize, setFontSize] = useState(DEFAULT_FONT_SIZE);
 
-  const title = tool.state.data.title?.trim() || toolConfig.name;
+  const state = tool.state.data;
 
-  useEffect(() => {
-    document.title = title;
-  }, [title]);
+  // Live analysis recomputed on every keystroke.
+  const analysis = useMemo(() => analyzeText(state), [state]);
 
   const handleTextChange = useCallback(
     (text: string) => {
-      setToolData((prev) => ({ ...prev, content: text }));
+      setToolData((prev) => ({ ...prev, text }));
+    },
+    [setToolData]
+  );
+
+  const handleSettingChange = useCallback(
+    (patch: Partial<ReadabilityState>) => {
+      setToolData((prev) => ({ ...prev, ...patch }));
     },
     [setToolData]
   );
 
   const handleFontSizeChange = useCallback((delta: number) => {
     setFontSize((prev) => Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE, prev + delta)));
+  }, []);
+
+  useEffect(() => {
+    document.title = toolConfig.name;
   }, []);
 
   useEffect(() => {
@@ -70,7 +84,7 @@ export default function ToolClient() {
       const serialized = decompressFromEncodedURIComponent(encodedState);
       if (!serialized) throw new Error('Invalid shared URL');
       const parsed: unknown = JSON.parse(serialized);
-      const deserialized = notepadToolDef.deserialize(parsed);
+      const deserialized = readabilityAnalyzerTool.deserialize(parsed);
       if (!deserialized.success) throw new Error(deserialized.error);
       setToolData(deserialized.data);
       showToast('Loaded state from shared URL', 'success');
@@ -83,7 +97,7 @@ export default function ToolClient() {
   const handleShare = useCallback(async () => {
     setIsSharing(true);
     try {
-      const serialized = notepadToolDef.serialize(tool.state.data);
+      const serialized = readabilityAnalyzerTool.serialize(state);
       const encodedState = compressToEncodedURIComponent(serialized);
       if (!encodedState) throw new Error('Failed to encode state for URL');
       const url = new URL(window.location.href);
@@ -94,7 +108,7 @@ export default function ToolClient() {
       const shareUrl = url.toString();
       if (navigator.share) {
         try {
-          await navigator.share({ title, url: shareUrl });
+          await navigator.share({ title: toolConfig.name, url: shareUrl });
           showToast('Shared URL ready', 'success');
           return;
         } catch (error) {
@@ -109,11 +123,36 @@ export default function ToolClient() {
     } finally {
       setIsSharing(false);
     }
-  }, [showToast, tool.state.data, title]);
+  }, [showToast, state]);
+
+  const handleCopySummary = useCallback(async () => {
+    try {
+      const report = buildSummaryReport(analysis, state);
+      await navigator.clipboard.writeText(report);
+      showToast('Summary report copied to clipboard', 'success');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to copy summary';
+      showToast(message, 'error');
+    }
+  }, [analysis, state, showToast]);
+
+  const handleExportJson = useCallback(() => {
+    try {
+      downloadJson(analysis, state.wpm);
+      showToast('Analysis exported as JSON', 'success');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to export JSON';
+      showToast(message, 'error');
+    }
+  }, [analysis, state.wpm, showToast]);
 
   const toolbarContent = (
     <>
-      <ToolToolbar />
+      <ToolToolbar
+        analysis={analysis}
+        onCopySummary={handleCopySummary}
+        onExportJson={handleExportJson}
+      />
       <ImportExport
         formats={tool.supportedFormats}
         onExport={tool.handleExport}
@@ -126,20 +165,29 @@ export default function ToolClient() {
   );
 
   const sidebarContent = (
-    <ToolSidebar text={tool.state.data.content} fontSize={fontSize} onFontSizeChange={handleFontSizeChange} />
+    <ToolSidebar
+      analysis={analysis}
+      settings={state}
+      onSettingChange={handleSettingChange}
+      fontSize={fontSize}
+      onFontSizeChange={handleFontSizeChange}
+    />
   );
 
   const canvasContent = (
     <ToolCanvas
       canvasRef={canvasRef}
-      text={tool.state.data.content}
-      fontSize={fontSize}
+      text={state.text}
+      analysis={analysis}
       onChange={handleTextChange}
     />
   );
 
   const statusBarContent = (
     <>
+      <span className="status-slot">
+        {analysis.counts.words.toLocaleString()} words · {analysis.readingTimeLabel} read
+      </span>
       <span
         className={`status-slot status-slot-state ${tool.state.isDirty ? 'status-unsaved' : 'status-saved'}`}
       >
