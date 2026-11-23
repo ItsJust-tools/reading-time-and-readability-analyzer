@@ -29,7 +29,7 @@ export function countSyllables(word: string): number {
   const w = word.toLowerCase().replace(/[^a-z']/g, '');
   if (!w) return 0;
   if (w.length <= 3) return 1;
-  let s = w.replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/, '').replace(/^y/, '');
+  const s = w.replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/, '').replace(/^y/, '');
   const matches = s.match(VOWELS);
   return Math.max(1, matches ? matches.length : 0);
 }
